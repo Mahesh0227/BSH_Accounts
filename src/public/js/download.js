@@ -6,75 +6,72 @@ document.addEventListener("DOMContentLoaded", () => {
   const downloadBtn = document.getElementById("downloadExcelBtn");
   const downloadYear = document.getElementById("downloadYear");
   const downloadMonth = document.getElementById("downloadMonth");
-//  const token = localStorage.getItem("bsh_token");
-  // ------------------------------
-  // INIT YEAR DROPDOWN (AUTO)
-  // ------------------------------
-  (function initDownloadYears() {
-    if (!downloadYear) return;
 
-    const currentYear = new Date().getFullYear();
-    downloadYear.innerHTML = "";
-
-    for (let y = currentYear; y >= 2020; y--) {
-      const opt = document.createElement("option");
-      opt.value = y;
-      opt.textContent = y;
-      downloadYear.appendChild(opt);
-    }
-
-    downloadYear.value = currentYear;
-  })();
+  if (!downloadBtn || !downloadYear || !downloadMonth) return;
 
   // ------------------------------
-  // DOWNLOAD HANDLER
+  // INIT YEAR DROPDOWN
   // ------------------------------
+  const currentYear = new Date().getFullYear();
+  downloadYear.innerHTML = "";
 
+  for (let y = currentYear; y >= 2020; y--) {
+    const opt = document.createElement("option");
+    opt.value = y;
+    opt.textContent = y;
+    downloadYear.appendChild(opt);
+  }
 
-  downloadBtn.addEventListener("click", async () => {
-    const year = downloadYear.value;
-    const month = downloadMonth.value || "ALL";
-    const token = localStorage.getItem("bsh_token");
+  downloadYear.value = currentYear;
 
-    if (!token) {
-      alert("Please login again");
-      return;
-    }
+  // ------------------------------
+  // HARD BLOCK GLOBAL CLICK HANDLERS
+  // ------------------------------
+  downloadBtn.addEventListener(
+    "click",
+    async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation(); // 🔥 triple kill
 
-    try {
-      // 🔐 Authenticated request
-      const res = await fetch(
-        `/api/download/excel?year=${encodeURIComponent(year)}&month=${encodeURIComponent(month)}`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
-        }
-      );
+      const year = downloadYear.value;
+      const month = downloadMonth.value ?? "ALL";
+      const token = localStorage.getItem("bsh_token");
 
-      if (!res.ok) {
-        const msg = await res.text();
-        throw new Error(msg || "Download failed");
+      if (!token) {
+        alert("Session expired. Please login again.");
+        return;
       }
 
-      // 📦 Convert response to file
-      const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
+      try {
+        const res = await fetch(
+          `/api/download/excel?year=${encodeURIComponent(year)}&month=${encodeURIComponent(month)}`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`
+            }
+          }
+        );
 
-      // ⬇ Trigger download
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `BSH_Finance_${year}_${month}.xlsx`;
-      document.body.appendChild(a);
-      a.click();
+        if (!res.ok) throw new Error(await res.text());
 
-      // 🧹 Cleanup
-      a.remove();
-      window.URL.revokeObjectURL(url);
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
 
-    } catch (err) {
-      console.error("Download error:", err);
-      alert("Failed to download Excel file");
-    }
-  });
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `BSH_Finance_${year}_${month}.xlsx`;
+        document.body.appendChild(a);
+        a.click();
+
+        a.remove();
+        URL.revokeObjectURL(url);
+
+      } catch (err) {
+        console.error("Download failed:", err);
+        alert("Failed to download Excel file");
+      }
+    },
+    true // 🚨 CAPTURE PHASE (THIS IS THE KEY)
+  );
 });

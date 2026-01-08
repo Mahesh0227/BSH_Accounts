@@ -5,17 +5,16 @@ const multer = require("multer");
 const auth = require("../middlewares/auth.middleware");
 const uploadController = require("../controllers/upload.controller");
 
-// memory storage (Excel buffer kosam)
+
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 } // 5MB
+  limits: { fileSize: 5 * 1024 * 1024 }
 });
 
-// POST /api/upload/excel
 router.post(
   "/excel",
   auth,
-  upload.single("file"), // 👈 VERY IMPORTANT
+  upload.single("file"),
   uploadController.uploadExcel
 );
 

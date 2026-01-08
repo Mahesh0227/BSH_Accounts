@@ -8,5 +8,5 @@ console.log("AUTH TYPE:", typeof auth);
 console.log("DOWNLOAD TYPE:", typeof controller.downloadExcel);
 
 router.get("/excel", auth, controller.downloadExcel);
-
+router.get("/template", auth, controller.downloadTemplate);
 module.exports = router;

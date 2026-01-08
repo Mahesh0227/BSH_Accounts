@@ -1,6 +1,7 @@
 const db = require("../config/db");
 const bcrypt = require("bcrypt");
-// ================= TEMP PASSWORD GENERATOR =================
+
+/* ================= TEMP PASSWORD GENERATOR ================= */
 function generateTempPassword(length = 8) {
   const chars =
     "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789@#$";
@@ -10,11 +11,11 @@ function generateTempPassword(length = 8) {
   }
   return pwd;
 }
-// ================= CREATE USER =================
+
+/* ================= CREATE USER ================= */
 exports.createUser = async (req, res) => {
   try {
-    // 🔐 Role check
-    if (!["ADMIN", "SUPER_ADMIN"].includes(req.user.role)) {
+    if (req.user.role !== "ADMIN") {
       return res.status(403).json({ message: "Access denied" });
     }
 
@@ -25,29 +26,31 @@ exports.createUser = async (req, res) => {
     }
 
     // 🔍 Check existing user
-    const [existing] = await db.query(
-      "SELECT id FROM users WHERE email = ?",
-      [email]
-    );
+    const { data: existing } = await db
+      .from("users")
+      .select("id")
+      .eq("email", email)
+      .single();
 
-    if (existing.length > 0) {
+    if (existing) {
       return res.status(400).json({ message: "User already exists" });
     }
 
-    // 🔑 GENERATE TEMP PASSWORD
+    // 🔑 TEMP PASSWORD
     const tempPassword = generateTempPassword();
-
-    // 🔐 HASH PASSWORD
     const hashedPassword = await bcrypt.hash(tempPassword, 10);
 
-    // 💾 SAVE USER
-    await db.query(
-      `INSERT INTO users (name, email, password, role, is_active)
-       VALUES (?, ?, ?, ?, 1)`,
-      [name, email, hashedPassword, role]
-    );
+    // 💾 Insert user
+    const { error } = await db.from("users").insert([{
+      name,
+      email,
+      password: hashedPassword,
+      role,
+      is_active: true
+    }]);
 
-    // ✅ SEND TEMP PASSWORD TO FRONTEND
+    if (error) throw error;
+
     res.json({
       message: "User created successfully",
       tempPassword
@@ -59,19 +62,21 @@ exports.createUser = async (req, res) => {
   }
 };
 
-// ================= LIST USERS =================
+/* ================= LIST USERS ================= */
 exports.listUsers = async (req, res) => {
   try {
-    if (!["ADMIN", "SUPER_ADMIN"].includes(req.user.role)) {
+    if (req.user.role !== "ADMIN") {
       return res.status(403).json({ message: "Access denied" });
     }
 
-    const [rows] = await db.query(
-      `SELECT id, name, email, role, is_active, last_login_at
-       FROM users`
-    );
+    const { data, error } = await db
+      .from("users")
+      .select("id, name, email, role, is_active, last_login_at")
+      .order("created_at", { ascending: false });
 
-    res.json(rows);
+    if (error) throw error;
+
+    res.json(data);
 
   } catch (err) {
     console.error("LIST USERS ERROR:", err);
@@ -79,94 +84,99 @@ exports.listUsers = async (req, res) => {
   }
 };
 
-// ================= DELETE USER =================
+/* ================= DELETE USER ================= */
 exports.deleteUser = async (req, res) => {
-  const conn = await db.getConnection();
-
   try {
-    const { id } = req.params;
-
-    if (!req.user || req.user.role !== "ADMIN") {
+    if (req.user.role !== "ADMIN") {
       return res.status(403).json({ message: "Admin access required" });
     }
 
-    // ❌ Prevent deleting self
+    const { id } = req.params;
+
     if (Number(id) === req.user.id) {
       return res.status(400).json({ message: "You cannot delete yourself" });
     }
 
-    await conn.beginTransaction();
+    // 🔥 Delete child records (order does not matter in Supabase)
+    await db.from("expenses").delete().eq("user_id", id);
+    await db.from("income").delete().eq("user_id", id);
+    await db.from("savings").delete().eq("user_id", id);
+    await db.from("password_resets").delete().eq("user_id", id);
 
-    // 🔥 DELETE CHILD RECORDS FIRST
-    await conn.query("DELETE FROM expenses WHERE user_id = ?", [id]);
-    await conn.query("DELETE FROM income WHERE user_id = ?", [id]);
-    await conn.query("DELETE FROM savings WHERE user_id = ?", [id]);
-    await conn.query("DELETE FROM password_resets WHERE user_id = ?", [id]);
+    // 🔥 Delete user
+    const { error, count } = await db
+      .from("users")
+      .delete({ count: "exact" })
+      .eq("id", id);
 
-    // 🔥 DELETE USER LAST
-    const [result] = await conn.query(
-      "DELETE FROM users WHERE id = ?",
-      [id]
-    );
+    if (error) throw error;
 
-    if (result.affectedRows === 0) {
-      await conn.rollback();
+    if (count === 0) {
       return res.status(404).json({ message: "User not found" });
     }
-
-    await conn.commit();
 
     res.json({ message: "User permanently deleted" });
 
   } catch (err) {
-    await conn.rollback();
-    console.error("Delete user error:", err);
+    console.error("DELETE USER ERROR:", err);
     res.status(500).json({ message: "Server error" });
-  } finally {
-    conn.release();
   }
 };
 
-// ================= PAUSE USER =================
+/* ================= PAUSE USER ================= */
 exports.pauseUser = async (req, res) => {
   try {
+    if (req.user.role !== "ADMIN") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+
     const { id } = req.params;
 
-    const [result] = await db.query(
-      "UPDATE users SET is_active = 0 WHERE id = ?",
-      [id]
-    );
+    const { data, error } = await db
+      .from("users")
+      .update({ is_active: false })
+      .eq("id", id)
+      .select("id");
 
-    if (result.affectedRows === 0) {
+    if (error) throw error;
+
+    if (!data || data.length === 0) {
       return res.status(404).json({ message: "User not found" });
     }
 
     res.json({ message: "User paused successfully" });
 
   } catch (err) {
-    console.error("Pause user error:", err);
+    console.error("PAUSE USER ERROR:", err);
     res.status(500).json({ message: "Server error" });
   }
 };
 
-// ================= RESUME USER =================
+/* ================= RESUME USER ================= */
 exports.resumeUser = async (req, res) => {
   try {
+    if (req.user.role !== "ADMIN") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+
     const { id } = req.params;
 
-    const [result] = await db.query(
-      "UPDATE users SET is_active = 1 WHERE id = ?",
-      [id]
-    );
+    const { data, error } = await db
+      .from("users")
+      .update({ is_active: true })
+      .eq("id", id)
+      .select("id");
 
-    if (result.affectedRows === 0) {
+    if (error) throw error;
+
+    if (!data || data.length === 0) {
       return res.status(404).json({ message: "User not found" });
     }
 
     res.json({ message: "User resumed successfully" });
 
   } catch (err) {
-    console.error("Resume user error:", err);
+    console.error("RESUME USER ERROR:", err);
     res.status(500).json({ message: "Server error" });
   }
 };

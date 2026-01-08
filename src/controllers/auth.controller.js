@@ -1,24 +1,23 @@
-const db = require("../config/db");
+const db = require("../config/db"); // supabase client
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const authService = require("../services/auth.service");
-
 
 // ================= LOGIN =================
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    const [rows] = await db.query(
-      "SELECT * FROM users WHERE email = ?",
-      [email]
-    );
+    // 🔄 MySQL -> Supabase
+    const { data: user, error } = await db
+      .from("users")
+      .select("*")
+      .eq("email", email)
+      .single();
 
-    if (rows.length === 0) {
+    if (error || !user) {
       return res.status(401).json({ message: "Invalid credentials" });
     }
-
-    const user = rows[0];
 
     if (!user.is_active) {
       return res.status(403).json({ message: "Account disabled" });
@@ -35,11 +34,11 @@ exports.login = async (req, res) => {
       { expiresIn: "1d" }
     );
 
-    // ✅ FIXED FIELD NAME
-    await db.query(
-      "UPDATE users SET last_login_at = NOW() WHERE id = ?",
-      [user.id]
-    );
+    // 🔄 Update last_login_at
+    await db
+      .from("users")
+      .update({ last_login_at: new Date() })
+      .eq("id", user.id);
 
     res.json({
       token,
@@ -75,7 +74,6 @@ exports.adminSignup = async (req, res) => {
   }
 };
 
-
 // ================= REGISTER (NORMAL USER) =================
 exports.register = async (req, res) => {
   try {
@@ -85,21 +83,27 @@ exports.register = async (req, res) => {
       return res.status(400).json({ message: "Email & password required" });
     }
 
-    const [existing] = await db.query(
-      "SELECT id FROM users WHERE email = ?",
-      [email]
-    );
+    const { data: existing } = await db
+      .from("users")
+      .select("id")
+      .eq("email", email)
+      .single();
 
-    if (existing.length > 0) {
+    if (existing) {
       return res.status(400).json({ message: "User already exists" });
     }
 
     const hashed = await bcrypt.hash(password, 10);
 
-    await db.query(
-      "INSERT INTO users (email, password, role) VALUES (?, ?, 'USER')",
-      [email, hashed]
-    );
+    const { error } = await db
+      .from("users")
+      .insert([{
+        email,
+        password: hashed,
+        role: "USER"
+      }]);
+
+    if (error) throw error;
 
     res.status(201).json({ message: "Registered successfully" });
 
@@ -112,7 +116,7 @@ exports.register = async (req, res) => {
 // ================= CHANGE PASSWORD =================
 exports.changePassword = async (req, res) => {
   try {
-    const userId = req.user.id; // JWT middleware nundi
+    const userId = req.user.id; // from JWT middleware
     const { newPassword, confirmPassword } = req.body;
 
     if (!newPassword || !confirmPassword) {
@@ -129,10 +133,12 @@ exports.changePassword = async (req, res) => {
 
     const hashed = await bcrypt.hash(newPassword, 10);
 
-    await db.query(
-      "UPDATE users SET password = ? WHERE id = ?",
-      [hashed, userId]
-    );
+    const { error } = await db
+      .from("users")
+      .update({ password: hashed })
+      .eq("id", userId);
+
+    if (error) throw error;
 
     res.json({ message: "✅ Password changed successfully" });
 

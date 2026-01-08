@@ -305,5 +305,32 @@ async function apiFetch(url, options = {}) {
     });
   });
 </script>
+
+<script>
+document.addEventListener("DOMContentLoaded", async () => {
+  const signupBtn = document.getElementById("signupSubmit");
+  const msg = document.getElementById("msg");
+
+  try {
+    const res = await fetch("/auth/admin-exists");
+    const data = await res.json();
+
+    if (data.adminExists === true) {
+  signupBtn.disabled = true;
+  signupBtn.classList.add("opacity-50", "cursor-not-allowed");
+  msg.innerText = "Signup disabled: Admin already exists";
+} else {
+  signupBtn.disabled = false;
+  signupBtn.classList.remove("opacity-50", "cursor-not-allowed");
+  msg.innerText = "";
+}
+
+  } catch (err) {
+    console.error("ADMIN CHECK FAILED:", err);
+    signupBtn.disabled = false; // fail-safe
+  }
+});
+</script>
+
 </body>
 </html>

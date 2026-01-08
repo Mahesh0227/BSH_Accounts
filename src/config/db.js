@@ -1,14 +1,8 @@
-const mysql = require("mysql2");
+const { createClient } = require("@supabase/supabase-js");
 
-const db = mysql.createPool({
-  host: "localhost",
-  user: "root",
-  password: "1216",
-  database: "bsh_demo",
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0
-});
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_ANON_KEY
+);
 
-// 🔥 THIS FIX MAKES await WORK
-module.exports = db.promise();
+module.exports = supabase;

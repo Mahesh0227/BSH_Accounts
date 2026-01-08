@@ -1,3 +1,4 @@
+require("dotenv").config(); 
 const express = require("express");
 const path = require("path");
 
@@ -18,7 +19,8 @@ app.use("/api/download", require("./routes/download.routes"));
 
 
 // uploads
-app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
+app.use("/api/upload", require("./routes/upload.routes"));
+
 
 // ======================
 // STATIC FILES LAST ✅

@@ -1,71 +1,105 @@
-const db = require('../config/db');
+const db = require("../config/db");
+
+// Helper: today & month range
+function getToday() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function getMonthRange() {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), 1)
+    .toISOString()
+    .slice(0, 10);
+  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+    .toISOString()
+    .slice(0, 10);
+  return { start, end };
+}
 
 //
 // ======================= EXPENSES DASHBOARD =======================
 //
 
 // 1️⃣ TODAY EXPENSES TOTAL
-exports.todayTotal = (req, res) => {
-  const userId = req.userId;
+exports.todayTotal = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const today = getToday();
 
-  const sql = `
-    SELECT IFNULL(SUM(amount), 0) AS total
-    FROM expenses
-    WHERE user_id = ?
-      AND expense_date = CURDATE()
-  `;
+    const { data, error } = await db
+      .from("expenses")
+      .select("amount")
+      .eq("user_id", userId)
+      .eq("expense_date", today);
 
-  db.query(sql, [userId], (err, results) => {
-    if (err) {
-      console.error('TODAY EXPENSE ERROR:', err);
-      return res.status(500).json({ message: 'DB error' });
-    }
-    res.json({ todayTotal: results[0].total });
-  });
+    if (error) throw error;
+
+    const total = data.reduce((s, r) => s + Number(r.amount), 0);
+    res.json({ todayTotal: total });
+
+  } catch (err) {
+    console.error("TODAY EXPENSE ERROR:", err);
+    res.status(500).json({ message: "DB error" });
+  }
 };
 
 // 2️⃣ CURRENT MONTH EXPENSE TOTAL
-exports.monthTotal = (req, res) => {
-  const userId = req.userId;
+exports.monthTotal = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { start, end } = getMonthRange();
 
-  const sql = `
-    SELECT IFNULL(SUM(amount), 0) AS total
-    FROM expenses
-    WHERE user_id = ?
-      AND MONTH(expense_date) = MONTH(CURDATE())
-      AND YEAR(expense_date) = YEAR(CURDATE())
-  `;
+    const { data, error } = await db
+      .from("expenses")
+      .select("amount")
+      .eq("user_id", userId)
+      .gte("expense_date", start)
+      .lte("expense_date", end);
 
-  db.query(sql, [userId], (err, results) => {
-    if (err) {
-      console.error('MONTH EXPENSE ERROR:', err);
-      return res.status(500).json({ message: 'DB error' });
-    }
-    res.json({ monthTotal: results[0].total });
-  });
+    if (error) throw error;
+
+    const total = data.reduce((s, r) => s + Number(r.amount), 0);
+    res.json({ monthTotal: total });
+
+  } catch (err) {
+    console.error("MONTH EXPENSE ERROR:", err);
+    res.status(500).json({ message: "DB error" });
+  }
 };
 
 // 3️⃣ MONTHLY EXPENSES (CHART)
-exports.monthExpenses = (req, res) => {
-  const userId = req.userId;
+exports.monthExpenses = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { start, end } = getMonthRange();
 
-  const sql = `
-    SELECT expense_date, SUM(amount) AS total
-    FROM expenses
-    WHERE user_id = ?
-      AND MONTH(expense_date) = MONTH(CURDATE())
-      AND YEAR(expense_date) = YEAR(CURDATE())
-    GROUP BY expense_date
-    ORDER BY expense_date
-  `;
+    const { data, error } = await db
+      .from("expenses")
+      .select("expense_date, amount")
+      .eq("user_id", userId)
+      .gte("expense_date", start)
+      .lte("expense_date", end)
+      .order("expense_date");
 
-  db.query(sql, [userId], (err, results) => {
-    if (err) {
-      console.error('EXPENSE CHART ERROR:', err);
-      return res.status(500).json({ message: 'DB error' });
-    }
-    res.json(results);
-  });
+    if (error) throw error;
+
+    const grouped = {};
+    data.forEach(r => {
+      grouped[r.expense_date] =
+        (grouped[r.expense_date] || 0) + Number(r.amount);
+    });
+
+    const result = Object.keys(grouped).map(d => ({
+      expense_date: d,
+      total: grouped[d]
+    }));
+
+    res.json(result);
+
+  } catch (err) {
+    console.error("EXPENSE CHART ERROR:", err);
+    res.status(500).json({ message: "DB error" });
+  }
 };
 
 
@@ -74,67 +108,85 @@ exports.monthExpenses = (req, res) => {
 //
 
 // 4️⃣ TODAY INCOME TOTAL
-exports.todayIncome = (req, res) => {
-  const userId = req.userId;
+exports.todayIncome = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const today = getToday();
 
-  const sql = `
-    SELECT IFNULL(SUM(amount), 0) AS total
-    FROM income
-    WHERE user_id = ?
-      AND income_date = CURDATE()
-  `;
+    const { data, error } = await db
+      .from("income")
+      .select("amount")
+      .eq("user_id", userId)
+      .eq("income_date", today);
 
-  db.query(sql, [userId], (err, results) => {
-    if (err) {
-      console.error('TODAY INCOME ERROR:', err);
-      return res.status(500).json({ message: 'DB error' });
-    }
-    res.json({ todayIncome: results[0].total });
-  });
+    if (error) throw error;
+
+    const total = data.reduce((s, r) => s + Number(r.amount), 0);
+    res.json({ todayIncome: total });
+
+  } catch (err) {
+    console.error("TODAY INCOME ERROR:", err);
+    res.status(500).json({ message: "DB error" });
+  }
 };
 
 // 5️⃣ CURRENT MONTH INCOME TOTAL
-exports.monthIncome = (req, res) => {
-  const userId = req.userId;
+exports.monthIncome = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { start, end } = getMonthRange();
 
-  const sql = `
-    SELECT IFNULL(SUM(amount), 0) AS total
-    FROM income
-    WHERE user_id = ?
-      AND MONTH(income_date) = MONTH(CURDATE())
-      AND YEAR(income_date) = YEAR(CURDATE())
-  `;
+    const { data, error } = await db
+      .from("income")
+      .select("amount")
+      .eq("user_id", userId)
+      .gte("income_date", start)
+      .lte("income_date", end);
 
-  db.query(sql, [userId], (err, results) => {
-    if (err) {
-      console.error('MONTH INCOME ERROR:', err);
-      return res.status(500).json({ message: 'DB error' });
-    }
-    res.json({ monthIncome: results[0].total });
-  });
+    if (error) throw error;
+
+    const total = data.reduce((s, r) => s + Number(r.amount), 0);
+    res.json({ monthIncome: total });
+
+  } catch (err) {
+    console.error("MONTH INCOME ERROR:", err);
+    res.status(500).json({ message: "DB error" });
+  }
 };
 
 // 6️⃣ MONTHLY INCOME (CHART)
-exports.incomeChart = (req, res) => {
-  const userId = req.userId;
+exports.incomeChart = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { start, end } = getMonthRange();
 
-  const sql = `
-    SELECT income_date, SUM(amount) AS total
-    FROM income
-    WHERE user_id = ?
-      AND MONTH(income_date) = MONTH(CURDATE())
-      AND YEAR(income_date) = YEAR(CURDATE())
-    GROUP BY income_date
-    ORDER BY income_date
-  `;
+    const { data, error } = await db
+      .from("income")
+      .select("income_date, amount")
+      .eq("user_id", userId)
+      .gte("income_date", start)
+      .lte("income_date", end)
+      .order("income_date");
 
-  db.query(sql, [userId], (err, results) => {
-    if (err) {
-      console.error('INCOME CHART ERROR:', err);
-      return res.status(500).json({ message: 'DB error' });
-    }
-    res.json(results);
-  });
+    if (error) throw error;
+
+    const grouped = {};
+    data.forEach(r => {
+      grouped[r.income_date] =
+        (grouped[r.income_date] || 0) + Number(r.amount);
+    });
+
+    const result = Object.keys(grouped).map(d => ({
+      income_date: d,
+      total: grouped[d]
+    }));
+
+    res.json(result);
+
+  } catch (err) {
+    console.error("INCOME CHART ERROR:", err);
+    res.status(500).json({ message: "DB error" });
+  }
 };
 
 
@@ -143,67 +195,83 @@ exports.incomeChart = (req, res) => {
 //
 
 // 7️⃣ TODAY SAVINGS TOTAL
-exports.todaySavings = (req, res) => {
-  const userId = req.userId;
+exports.todaySavings = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const today = getToday();
 
-  const sql = `
-    SELECT IFNULL(SUM(amount), 0) AS total
-    FROM savings
-    WHERE user_id = ?
-      AND savings_date = CURDATE()
-  `;
+    const { data, error } = await db
+      .from("savings")
+      .select("amount")
+      .eq("user_id", userId)
+      .eq("savings_date", today);
 
-  db.query(sql, [userId], (err, results) => {
-    if (err) {
-      console.error('TODAY SAVINGS ERROR:', err);
-      return res.status(500).json({ message: 'DB error' });
-    }
-    res.json({ todaySavings: results[0].total });
-  });
+    if (error) throw error;
+
+    const total = data.reduce((s, r) => s + Number(r.amount), 0);
+    res.json({ todaySavings: total });
+
+  } catch (err) {
+    console.error("TODAY SAVINGS ERROR:", err);
+    res.status(500).json({ message: "DB error" });
+  }
 };
 
 // 8️⃣ CURRENT MONTH SAVINGS TOTAL
-exports.monthSavings = (req, res) => {
-  const userId = req.userId;
+exports.monthSavings = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { start, end } = getMonthRange();
 
-  const sql = `
-    SELECT IFNULL(SUM(amount), 0) AS total
-    FROM savings
-    WHERE user_id = ?
-      AND MONTH(savings_date) = MONTH(CURDATE())
-      AND YEAR(savings_date) = YEAR(CURDATE())
-  `;
+    const { data, error } = await db
+      .from("savings")
+      .select("amount")
+      .eq("user_id", userId)
+      .gte("savings_date", start)
+      .lte("savings_date", end);
 
-  db.query(sql, [userId], (err, results) => {
-    if (err) {
-      console.error('MONTH SAVINGS ERROR:', err);
-      return res.status(500).json({ message: 'DB error' });
-    }
-    res.json({ monthSavings: results[0].total });
-  });
+    if (error) throw error;
+
+    const total = data.reduce((s, r) => s + Number(r.amount), 0);
+    res.json({ monthSavings: total });
+
+  } catch (err) {
+    console.error("MONTH SAVINGS ERROR:", err);
+    res.status(500).json({ message: "DB error" });
+  }
 };
 
 // 9️⃣ MONTHLY SAVINGS (CHART)
-exports.savingsChart = (req, res) => {
-  const userId = req.userId;
+exports.savingsChart = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { start, end } = getMonthRange();
 
-  const sql = `
-    SELECT savings_date, SUM(amount) AS total
-    FROM savings
-    WHERE user_id = ?
-      AND MONTH(savings_date) = MONTH(CURDATE())
-      AND YEAR(savings_date) = YEAR(CURDATE())
-    GROUP BY savings_date
-    ORDER BY savings_date
-  `;
+    const { data, error } = await db
+      .from("savings")
+      .select("savings_date, amount")
+      .eq("user_id", userId)
+      .gte("savings_date", start)
+      .lte("savings_date", end)
+      .order("savings_date");
 
-  db.query(sql, [userId], (err, results) => {
-    if (err) {
-      console.error('SAVINGS CHART ERROR:', err);
-      return res.status(500).json({ message: 'DB error' });
-    }
-    res.json(results);
-  });
+    if (error) throw error;
+
+    const grouped = {};
+    data.forEach(r => {
+      grouped[r.savings_date] =
+        (grouped[r.savings_date] || 0) + Number(r.amount);
+    });
+
+    const result = Object.keys(grouped).map(d => ({
+      savings_date: d,
+      total: grouped[d]
+    }));
+
+    res.json(result);
+
+  } catch (err) {
+    console.error("SAVINGS CHART ERROR:", err);
+    res.status(500).json({ message: "DB error" });
+  }
 };
-
-

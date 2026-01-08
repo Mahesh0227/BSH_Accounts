@@ -1,4 +1,4 @@
-const db = require("../config/db");
+const db = require("../config/db"); // Supabase client
 
 /* ===============================
    ADD EXPENSE (WITH FILES)
@@ -6,7 +6,7 @@ const db = require("../config/db");
 exports.addExpense = async (req, res) => {
   try {
     const { title, expense_date, payment_mode, amount } = req.body;
-    const userId = req.user.id; // ✅ FIX
+    const userId = req.user.id;
 
     if (!title || !expense_date || !amount) {
       return res.status(400).json({ message: "Missing fields" });
@@ -15,20 +15,19 @@ exports.addExpense = async (req, res) => {
     const bill = req.files?.bill?.[0]?.filename || null;
     const warranty = req.files?.warranty?.[0]?.filename || null;
 
-    await db.query(
-      `INSERT INTO expenses
-       (user_id, title, expense_date, payment_mode, amount, bill_file, warranty_file)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [
-        userId,
+    const { error } = await db
+      .from("expenses")
+      .insert([{
+        user_id: userId,
         title,
         expense_date,
-        payment_mode || null,
+        payment_mode: payment_mode || null,
         amount,
-        bill,
-        warranty
-      ]
-    );
+        bill_file: bill,
+        warranty_file: warranty
+      }]);
+
+    if (error) throw error;
 
     res.json({ message: "Expense added" });
 
@@ -44,24 +43,25 @@ exports.addExpense = async (req, res) => {
 ================================ */
 exports.listExpenses = async (req, res) => {
   try {
-    const userId = req.user.id; // ✅ FIX
+    const userId = req.user.id;
 
-    const [rows] = await db.query(
-      `SELECT
-         id,
-         title,
-         expense_date,
-         payment_mode,
-         amount,
-         bill_file,
-         warranty_file
-       FROM expenses
-       WHERE user_id = ?
-       ORDER BY expense_date DESC`,
-      [userId]
-    );
+    const { data, error } = await db
+      .from("expenses")
+      .select(`
+        id,
+        title,
+        expense_date,
+        payment_mode,
+        amount,
+        bill_file,
+        warranty_file
+      `)
+      .eq("user_id", userId)
+      .order("expense_date", { ascending: false });
 
-    res.json(rows);
+    if (error) throw error;
+
+    res.json(data);
 
   } catch (err) {
     console.error("LIST EXPENSES ERROR:", err);
@@ -75,15 +75,19 @@ exports.listExpenses = async (req, res) => {
 ================================ */
 exports.deleteExpense = async (req, res) => {
   try {
-    const userId = req.user.id; // ✅ FIX
+    const userId = req.user.id;
     const { id } = req.params;
 
-    const [result] = await db.query(
-      `DELETE FROM expenses WHERE id = ? AND user_id = ?`,
-      [id, userId]
-    );
+    const { data, error } = await db
+      .from("expenses")
+      .delete()
+      .eq("id", id)
+      .eq("user_id", userId)
+      .select("id");
 
-    if (result.affectedRows === 0) {
+    if (error) throw error;
+
+    if (!data || data.length === 0) {
       return res.status(404).json({ message: "Expense not found" });
     }
 
@@ -101,9 +105,8 @@ exports.deleteExpense = async (req, res) => {
 ================================ */
 exports.updateExpense = async (req, res) => {
   try {
-    const userId = req.user.id; // ✅ FIX
+    const userId = req.user.id;
     const { id } = req.params;
-
     const { title, amount, expense_date, payment_mode } = req.body;
 
     if (!title || !amount || !expense_date) {
@@ -113,36 +116,35 @@ exports.updateExpense = async (req, res) => {
     const billFile = req.files?.bill?.[0];
     const warrantyFile = req.files?.warranty?.[0];
 
-    const [[existing]] = await db.query(
-      `SELECT bill_file, warranty_file
-       FROM expenses
-       WHERE id = ? AND user_id = ?`,
-      [id, userId]
-    );
+    // 🔎 Fetch existing files
+    const { data: existing, error: fetchError } = await db
+      .from("expenses")
+      .select("bill_file, warranty_file")
+      .eq("id", id)
+      .eq("user_id", userId)
+      .single();
 
-    if (!existing) {
+    if (fetchError || !existing) {
       return res.status(404).json({ message: "Expense not found" });
     }
 
     const billName = billFile ? billFile.filename : existing.bill_file;
     const warrantyName = warrantyFile ? warrantyFile.filename : existing.warranty_file;
 
-    await db.query(
-      `UPDATE expenses
-       SET title = ?, amount = ?, expense_date = ?, payment_mode = ?,
-           bill_file = ?, warranty_file = ?
-       WHERE id = ? AND user_id = ?`,
-      [
+    const { error } = await db
+      .from("expenses")
+      .update({
         title,
         amount,
         expense_date,
-        payment_mode || null,
-        billName,
-        warrantyName,
-        id,
-        userId
-      ]
-    );
+        payment_mode: payment_mode || null,
+        bill_file: billName,
+        warranty_file: warrantyName
+      })
+      .eq("id", id)
+      .eq("user_id", userId);
+
+    if (error) throw error;
 
     res.json({ message: "Expense updated successfully" });
 

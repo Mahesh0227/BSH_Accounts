@@ -1,4 +1,4 @@
-const db = require("../config/db");
+const db = require("../config/db"); // Supabase client
 
 /* ===============================
    ADD SAVINGS
@@ -6,17 +6,22 @@ const db = require("../config/db");
 exports.addSavings = async (req, res) => {
   try {
     const { title, amount, savings_date } = req.body;
-    const userId = req.user.id; // ✅ FIX
+    const userId = req.user.id;
 
     if (!title || !amount || !savings_date) {
       return res.status(400).json({ message: "All fields required" });
     }
 
-    await db.query(
-      `INSERT INTO savings (user_id, title, amount, savings_date)
-       VALUES (?, ?, ?, ?)`,
-      [userId, title, amount, savings_date]
-    );
+    const { error } = await db
+      .from("savings")
+      .insert([{
+        user_id: userId,
+        title,
+        amount,
+        savings_date
+      }]);
+
+    if (error) throw error;
 
     return res.status(201).json({
       message: "Savings added successfully"
@@ -34,16 +39,17 @@ exports.addSavings = async (req, res) => {
 ================================ */
 exports.listSavings = async (req, res) => {
   try {
-    const userId = req.user.id; // ✅ FIX
+    const userId = req.user.id;
 
-    const [rows] = await db.query(
-      `SELECT * FROM savings
-       WHERE user_id = ?
-       ORDER BY savings_date DESC`,
-      [userId]
-    );
+    const { data, error } = await db
+      .from("savings")
+      .select("*")
+      .eq("user_id", userId)
+      .order("savings_date", { ascending: false });
 
-    res.json(rows);
+    if (error) throw error;
+
+    res.json(data);
 
   } catch (err) {
     console.error("LIST SAVINGS ERROR:", err);
@@ -57,20 +63,22 @@ exports.listSavings = async (req, res) => {
 ================================ */
 exports.savingsByDate = async (req, res) => {
   try {
-    const userId = req.user.id; // ✅ FIX
+    const userId = req.user.id;
     const { date } = req.query;
 
     if (!date) {
       return res.status(400).json({ message: "Date required" });
     }
 
-    const [rows] = await db.query(
-      `SELECT * FROM savings
-       WHERE user_id = ? AND savings_date = ?`,
-      [userId, date]
-    );
+    const { data, error } = await db
+      .from("savings")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("savings_date", date);
 
-    res.json(rows);
+    if (error) throw error;
+
+    res.json(data);
 
   } catch (err) {
     console.error("SAVINGS BY DATE ERROR:", err);
@@ -85,17 +93,23 @@ exports.savingsByDate = async (req, res) => {
 exports.updateSavings = async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = req.user.id; // ✅ FIX
+    const userId = req.user.id;
     const { title, amount, savings_date } = req.body;
 
-    const [result] = await db.query(
-      `UPDATE savings
-       SET title = ?, amount = ?, savings_date = ?
-       WHERE id = ? AND user_id = ?`,
-      [title, amount, savings_date, id, userId]
-    );
+    const { data, error } = await db
+      .from("savings")
+      .update({
+        title,
+        amount,
+        savings_date
+      })
+      .eq("id", id)
+      .eq("user_id", userId)
+      .select("id");
 
-    if (result.affectedRows === 0) {
+    if (error) throw error;
+
+    if (!data || data.length === 0) {
       return res.status(404).json({ message: "Not found" });
     }
 

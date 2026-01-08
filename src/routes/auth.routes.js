@@ -19,14 +19,26 @@ router.post(
 
 router.get("/admin-exists", async (req, res) => {
   try {
-    const [rows] = await db.query(
-      "SELECT id FROM users WHERE role = 'SUPER_ADMIN'"
-    );
-    res.json({ exists: rows.length > 0 });
+    const { data, error } = await db
+      .from("users")
+      .select("id")
+      .eq("role", "ADMIN")
+      .limit(1);
+
+    if (error) {
+      console.error("ADMIN EXISTS ERROR:", error);
+      return res.json({ adminExists: false });
+    }
+
+    res.json({ adminExists: data.length > 0 });
+
   } catch (err) {
     console.error("ADMIN EXISTS ERROR:", err);
-    res.status(500).json({ exists: false });
+    res.json({ adminExists: false });
   }
 });
+
+
+
 
 module.exports = router;
